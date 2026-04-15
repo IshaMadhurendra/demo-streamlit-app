@@ -5,7 +5,7 @@
 ## Development process
 
 I started from the data, not the UI. Before writing any node code I
-spent time understanding the Census schema — the `{YEAR}_CBG_{CODE}`
+spent time understanding the Census schema: the `{YEAR}_CBG_{CODE}`
 pattern, the role of the three metadata tables (`FIPS_CODES`,
 `FIELD_DESCRIPTIONS`, `GEOGRAPHIC_DATA`), and the fact that table
 names starting with a digit force double-quoting in every generated
@@ -15,14 +15,14 @@ everything else falls out of standard SQL reasoning.
 
 Module order was deliberate:
 
-1. **`db/`** first — until Snowflake access and schema introspection
+1. **`db/`** first. Until Snowflake access and schema introspection
    worked, nothing downstream could be validated end-to-end.
-2. **`guardrails/validator.py`** next — pure Python, fastest to test,
+2. **`guardrails/validator.py`** next. Pure Python, fastest to test,
    and a concrete contract ("no write statement ever reaches Snowflake")
    the rest of the system can depend on.
-3. **`agent/nodes.py` + `graph.py`** — assembled once the pieces they
+3. **`agent/nodes.py` + `graph.py`**, assembled once the pieces they
    compose were already trusted.
-4. **`app.py`** last — a thin shell around the graph. This keeps the UI
+4. **`app.py`** last, a thin shell around the graph. This keeps the UI
    layer boring on purpose; the interesting behavior lives in the graph.
 
 The second half of the work was iterative UX tightening: catching each
@@ -36,20 +36,20 @@ it to the specific prompt / node / error path, and adjusting.
 The guardrail classifier runs on every message but only needs to emit one
 of two labels. Sonnet for that task would be wasteful. Putting Haiku at
 the front of the graph costs ~cents and ~1 s per off-topic interaction
-instead of the 5–10 s a full Sonnet round-trip would take — meaningful
-both for cost and for user perception of snappiness.
+instead of the 5–10 s a full Sonnet round-trip would take, which
+matters both for cost and for user perception of snappiness.
 
-The two places where judgment actually matters — authoring SQL and
-grounding a natural-language answer in results — use Sonnet.
+The two places where judgment actually matters, authoring SQL and
+grounding a natural-language answer in results, use Sonnet.
 
 ### LLM-authored SQL is treated as untrusted input
 
 The rule-based validator in `guardrails/validator.py` is the most
-important piece of safety code in the repo. It isn't clever; it's
-~60 lines that check "starts with `SELECT`/`WITH`", no blocklist
-keywords (after stripping string literals so queries *about* school
-dropouts still work), no statement chaining, no comment injection. The
-validator is untouched by the LLM chain at runtime — prompt injection
+important piece of safety code in the repo. It's ~60 lines that check
+"starts with `SELECT`/`WITH`", no blocklist keywords (after stripping
+string literals so queries *about* school dropouts still work), no
+statement chaining, no comment injection. The
+validator is untouched by the LLM chain at runtime, so prompt injection
 in either the user message or in any row retrieved from Snowflake
 cannot steer it. This is the reason we reject SQL statically before
 executing it, rather than asking the LLM to self-check.
@@ -87,15 +87,15 @@ question lacked a geography. The fix was an explicit output contract:
 Sonnet emits either SQL, or one of four sentinels that each route to a
 dedicated synthesis path:
 
-- `CANNOT_ANSWER: <reason>` — dataset genuinely doesn't cover it.
+- `CANNOT_ANSWER: <reason>`: dataset genuinely doesn't cover it.
   Synthesis appends a helpful offer of the closest available alternative
-  when one exists ("I only have 2019/2020, not 2010 — but I could
+  when one exists ("I only have 2019/2020, not 2010, but I could
   answer the 2019 → 2020 change instead").
-- `NEED_CLARIFICATION: <question>` — question is too ambiguous to answer
+- `NEED_CLARIFICATION: <question>`: question is too ambiguous to answer
   with a reasonable default ("What's the population?" with no geography).
-- `SMALL_TALK: <reply>` — conversational closers, thanks, greetings.
+- `SMALL_TALK: <reply>`: conversational closers, thanks, greetings.
   Skips SQL entirely; synthesis just emits the reply.
-- SQL — runs normally.
+- SQL: runs normally.
 
 This pattern turned "hallucination" from the default failure mode into
 a first-class response the user can act on.
@@ -103,7 +103,7 @@ a first-class response the user can act on.
 ### Statistical correctness on aggregation
 
 ACS median columns (`B19013e1` for income, `B25077e1` for house value,
-`B01002e1` for age, `B25064e1` for rent) are topcoded — income caps at
+`B01002e1` for age, `B25064e1` for rent) are topcoded: income caps at
 $250,001, so a naive `MAX` over block groups hits the ceiling for every
 large state and produces meaningless rankings. Plain `AVG` across
 block-group medians systematically overstates, because wealthy areas
@@ -120,8 +120,8 @@ matches the published ACS figure within rounding.
 ### Substitution disclosure
 
 When the user asks for a metric we don't have but we can answer with a
-close substitute — "average income" when only the median is available,
-"longer time trend" when only 2 years exist — the synthesis prompt
+close substitute (e.g. "average income" when only the median is available,
+"longer time trend" when only 2 years exist), the synthesis prompt
 requires the answer to open with an explicit disclosure sentence
 ("*I don't have average household income in this dataset, but I can
 share the median…*"). Synthesis also sees the full conversation
@@ -132,7 +132,7 @@ turn is just "ca".
 The SQL-generation prompt reinforces this: output column aliases must
 name the true metric being computed, not the word the user used. So
 when the user asks for "average" but the generator returns median,
-the column alias is `median_household_income` — which then flows
+the column alias is `median_household_income`, which then flows
 through to synthesis as ground truth for the disclosure.
 
 ### Warm conversational register
@@ -150,14 +150,14 @@ Every node can set `state["error"]` and return normally. The graph
 routes error states to the `synthesize` node, which picks the right
 user-facing template. The synthesis node distinguishes:
 
-- `snowflake_error` — true connection trouble
-- `column_unavailable` — retry failed with a column-name issue
-- `query_error` — retry failed with some other SQL bug
-- `unsafe_sql` — validator rejected the LLM's SQL
-- `execution_error` / `llm_unavailable` — unexpected runtime failures
+- `snowflake_error`: true connection trouble
+- `column_unavailable`: retry failed with a column-name issue
+- `query_error`: retry failed with some other SQL bug
+- `unsafe_sql`: validator rejected the LLM's SQL
+- `execution_error` / `llm_unavailable`: unexpected runtime failures
 
-Each maps to a distinct user-facing message. Nothing can crash the UI
-— the worst case is the generic "something went wrong" message.
+Each maps to a distinct user-facing message. Nothing can crash the UI;
+the worst case is the generic "something went wrong" message.
 
 ### UX polish
 
@@ -175,7 +175,7 @@ Each maps to a distinct user-facing message. Nothing can crash the UI
   results where all values are equal.
 - **Theme pinned** in `.streamlit/config.toml` (`base = "light"`,
   Snowflake-blue `primaryColor`), so the UI is identical locally,
-  on Streamlit Cloud, and across user browser themes — no more
+  on Streamlit Cloud, and across user browser themes. No more
   "white text on white sidebar" when someone's OS is in dark mode.
 
 ## What I would improve with more time
@@ -199,7 +199,7 @@ Each maps to a distinct user-facing message. Nothing can crash the UI
 
 - **Vector search over `METADATA_CBG_FIELD_DESCRIPTIONS`.** The dataset
   has thousands of field descriptions. Today the prompt includes a
-  small *sample* — good enough for common questions like "population"
+  small *sample*, good enough for common questions like "population"
   or "median income," but weaker on long-tail queries like
   "self-employment rate among women with a graduate degree." A vector
   index over that metadata table would let us fetch the 10 most
@@ -224,17 +224,17 @@ Each maps to a distinct user-facing message. Nothing can crash the UI
 
 - **LLM-as-judge regression tests.** For production this would catch
   silent quality regressions when prompts are edited. For a take-home
-  it was overkill — a deterministic golden-query harness with
+  it was overkill; a deterministic golden-query harness with
   structural assertions (contains the right state abbrev, value within
   a plausible range, SQL includes the expected pattern) would be the
   right next step.
 
 ## Tradeoffs in "unanswerable" handling
 
-The `CANNOT_ANSWER` path offers a partial alternative when one exists
-— e.g. asked "how did California's population change from 2010 to
-2020?", the agent replies *"I only have 2019 and 2020 data, not 2010
-— but I could answer the 2019 to 2020 change instead."* This is more
+The `CANNOT_ANSWER` path offers a partial alternative when one exists.
+For example, asked "how did California's population change from 2010
+to 2020?", the agent replies *"I only have 2019 and 2020 data, not
+2010, but I could answer the 2019 to 2020 change instead."* This is more
 helpful than a clean refusal, but it introduces a judgment call the LLM
 has to make correctly: **is the substitute actually close enough to be
 useful, or does it meaningfully misrepresent what the user asked?** A
@@ -262,7 +262,7 @@ clean and name what's missing" without auto-offering alternatives.
   misremembered table code. A targeted prompt nudge could teach it
   specifically about B23025's structure, but that's a narrow fix with
   a long tail of similar cases (poverty rate from B17, homeownership
-  rate from B25, etc.) — better addressed by a small
+  rate from B25, etc.), better addressed by a small
   "derivable-metrics" lookup than by expanding the system prompt.
 
 - **Geography ambiguity.** "Kansas City" is in both KS and MO. The
@@ -273,7 +273,7 @@ clean and name what's missing" without auto-offering alternatives.
 - **Year-vs-table-coverage drift.** Not every ACS table appears in
   every year of the Census dataset. The generator can choose a year
   that doesn't have the table code it needs. Today this produces a
-  row-count-zero response, handled gracefully — but it would be
+  row-count-zero response, handled gracefully, but it would be
   better to catch this during SQL generation by teaching the schema
   summary about per-year coverage.
 
@@ -302,19 +302,19 @@ clean and name what's missing" without auto-offering alternatives.
 
 ### What's covered today
 
-- **`test_guardrails.py`** — the SQL validator's contract is the
+- **`test_guardrails.py`**: the SQL validator's contract is the
   highest-leverage thing to test, since a bug here has security
   consequences. I covered valid `SELECT`/`WITH` forms, every blocked
   DDL/DML keyword, statement chaining, comment injection, and the
   critical false-positive case (a blocked keyword inside a string
   literal).
 
-- **`test_schema_loader.py`** — introspection of empty table lists,
+- **`test_schema_loader.py`**: introspection of empty table lists,
   latest-year picking, year/code extraction, bundle → string rendering
   (including the <3000-char size ceiling), and `lru_cache` hit-once
   behavior.
 
-- **`test_nodes.py`** — each node with its LLM or Snowflake dependency
+- **`test_nodes.py`**: each node with its LLM or Snowflake dependency
   mocked: guardrail pass/block/malformed/exception paths; SQL
   generation markdown stripping, `CANNOT_ANSWER` passthrough, LLM
   failure; validation safe/unsafe/sentinel paths; execution success,
@@ -348,7 +348,7 @@ cannot-answer paths return in 1–3 s.
 - A property-style fuzz test for the SQL validator with random
   mixing of literal content, comments, and keywords.
 - Golden-output regression tests for the synthesis prompt on a fixed
-  set of (question, rows) pairs — mostly to catch silent regressions
+  set of (question, rows) pairs, mostly to catch silent regressions
   when the prompts are edited.
 - A small set of live smoke tests that run against the real Snowflake
   dataset in CI on a schedule, so schema drift (e.g. a new year of

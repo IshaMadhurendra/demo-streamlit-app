@@ -18,6 +18,9 @@ LangGraph + Anthropic Claude + Snowflake**.
   (`CANNOT_ANSWER`, `NEED_CLARIFICATION`, `SMALL_TALK`, or SQL).
 - Self-corrects on SQL-compilation errors by re-prompting Sonnet with
   the real column list from `INFORMATION_SCHEMA`.
+- Exposes the generated SQL and the raw returned rows behind a
+  collapsible **"View query"** panel under each answer, with a
+  **Download CSV** button so you can take the data with you.
 
 > **Live demo** → **<https://census-agent-assignment.streamlit.app/>**
 > **Data source** → [SafeGraph US Open Census Data](https://app.snowflake.com/marketplace/listing/GZSUZ7C5UB/safegraph-us-open-census-data-neighborhood-insights-free-dataset), Snowflake Marketplace.
